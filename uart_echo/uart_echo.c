@@ -170,6 +170,10 @@ main(void)
     //
     // Enable the peripherals used by this example.
     //
+    // UART0
+    ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
+    ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
+    // UART1
     ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
     ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
 
@@ -178,25 +182,45 @@ main(void)
     //
     ROM_IntMasterEnable();
 
-    //
+    // UART0
     // Set GPIO A0 and A1 as UART pins.
     //
     GPIOPinConfigure(GPIO_PA0_U0RX);
     GPIOPinConfigure(GPIO_PA1_U0TX);
     ROM_GPIOPinTypeUART(GPIO_PORTA_BASE, GPIO_PIN_0 | GPIO_PIN_1);
 
+    // UART1
+    // Set GPIO B0 and B1 as UART pins.
     //
+    GPIOPinConfigure(GPIO_PB0_U1RX);
+    GPIOPinConfigure(GPIO_PB1_U1TX);
+    ROM_GPIOPinTypeUART(GPIO_PORTB_BASE, GPIO_PIN_0 | GPIO_PIN_1);
+
+    // UART0
     // Configure the UART for 115,200, 8-N-1 operation.
     //
     ROM_UARTConfigSetExpClk(UART0_BASE, ROM_SysCtlClockGet(), 115200,
                             (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
                              UART_CONFIG_PAR_NONE));
 
+    // UART1
+    // Configure the UART for 115,200, 8-N-1 operation.
     //
+    ROM_UARTConfigSetExpClk(UART1_BASE, ROM_SysCtlClockGet(), 115200,
+                            (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
+                             UART_CONFIG_PAR_NONE));
+
+    // UART0
     // Enable the UART interrupt.
     //
     ROM_IntEnable(INT_UART0);
     ROM_UARTIntEnable(UART0_BASE, UART_INT_RX | UART_INT_RT);
+
+    // UART1
+    // Enable the UART interrupt.
+    //
+    ROM_IntEnable(INT_UART1);
+    ROM_UARTIntEnable(UART1_BASE, UART_INT_RX | UART_INT_RT);
 
     int32_t tempChar = 0;
     uint8_t rx_buffer[10];
