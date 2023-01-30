@@ -1,0 +1,186 @@
+******************************************************************************
+                  TI ARM Linker PC v20.2.7                     
+******************************************************************************
+>> Linked Mon Jan 30 14:16:15 2023
+
+OUTPUT FILE NAME:   <uart_echo.out>
+ENTRY POINT SYMBOL: "_c_int00_noinit_noargs"  address: 00000629
+
+
+MEMORY CONFIGURATION
+
+         name            origin    length      used     unused   attr    fill
+----------------------  --------  ---------  --------  --------  ----  --------
+  FLASH                 00000000   00040000  0000079e  0003f862  R  X
+  SRAM                  20000000   00008000  00000100  00007f00  RW X
+
+
+SEGMENT ALLOCATION MAP
+
+run origin  load origin   length   init length attrs members
+----------  ----------- ---------- ----------- ----- -------
+00000000    00000000    000007a0   000007a0    r-x
+  00000000    00000000    0000026c   0000026c    r-- .intvecs
+  0000026c    0000026c    00000436   00000436    r-x .text
+  000006a4    000006a4    000000fc   000000fc    r-- .const
+20000000    20000000    00000100   00000000    rw-
+  20000000    20000000    00000100   00000000    rw- .stack
+
+
+SECTION ALLOCATION MAP
+
+ output                                  attributes/
+section   page    origin      length       input sections
+--------  ----  ----------  ----------   ----------------
+.intvecs   0    00000000    0000026c     
+                  00000000    0000026c     startup_ccs.obj (.intvecs)
+
+.text      0    0000026c    00000436     
+                  0000026c    00000170     uart_echo.obj (.text:main)
+                  000003dc    00000110     driverlib.lib : sysctl.obj (.text:SysCtlClockGet)
+                  000004ec    0000007a     rtsv7M4_T_le_v4SPD16_eabi.lib : memset_t2.asm.obj (.text)
+                  00000566    00000002     startup_ccs.obj (.text:FaultISR)
+                  00000568    00000078     uart_echo.obj (.text:UARTIntHandler)
+                  000005e0    00000048     driverlib.lib : gpio.obj (.text:GPIOPinConfigure)
+                  00000628    0000002c     rtsv7M4_T_le_v4SPD16_eabi.lib : boot_cortex_m.c.obj (.text:_c_int00_noinit_noargs:_c_int00_noinit_noargs)
+                  00000654    0000001c     uart_echo.obj (.text:UARTSend)
+                  00000670    0000000a     driverlib.lib : uart.obj (.text:UARTCharGet)
+                  0000067a    0000000a                   : uart.obj (.text:UARTCharPut)
+                  00000684    00000006                   : gpio.obj (.text:GPIOPinWrite)
+                  0000068a    00000006     startup_ccs.obj (.text:ResetISR)
+                  00000690    00000006     driverlib.lib : sysctl.obj (.text:SysCtlDelay)
+                  00000696    00000004     rtsv7M4_T_le_v4SPD16_eabi.lib : pre_init.c.obj (.text:_system_pre_init)
+                  0000069a    00000004                                   : exit.c.obj (.text:abort:abort)
+                  0000069e    00000002     startup_ccs.obj (.text:IntDefaultHandler)
+                  000006a0    00000002     startup_ccs.obj (.text:NmiSR)
+
+.const     0    000006a4    000000fc     
+                  000006a4    00000090     driverlib.lib : gpio.obj (.const:g_pui32GPIOBaseAddrs)
+                  00000734    0000006c                   : sysctl.obj (.const:g_pui32Xtals)
+
+.cinit     0    00000000    00000000     UNINITIALIZED
+
+.init_array 
+*          0    00000000    00000000     UNINITIALIZED
+
+.stack     0    20000000    00000100     UNINITIALIZED
+                  20000000    00000004     rtsv7M4_T_le_v4SPD16_eabi.lib : boot_cortex_m.c.obj (.stack)
+                  20000004    000000fc     --HOLE--
+
+__llvm_prf_cnts 
+*          0    20000000    00000000     UNINITIALIZED
+
+MODULE SUMMARY
+
+       Module                code   ro data   rw data
+       ------                ----   -------   -------
+    .\
+       startup_ccs.obj       12     620       0      
+       uart_echo.obj         516    0         0      
+    +--+---------------------+------+---------+---------+
+       Total:                528    620       0      
+                                                     
+    C:/ti/tivaware_c_series_2_1_4_178/driverlib/ccs/Debug/driverlib.lib
+       sysctl.obj            278    108       0      
+       gpio.obj              78     144       0      
+       uart.obj              20     0         0      
+    +--+---------------------+------+---------+---------+
+       Total:                376    252       0      
+                                                     
+    C:\ti\ccs1220\ccs\tools\compiler\ti-cgt-arm_20.2.7.LTS\lib\rtsv7M4_T_le_v4SPD16_eabi.lib
+       memset_t2.asm.obj     122    0         0      
+       boot_cortex_m.c.obj   44     0         0      
+       exit.c.obj            4      0         0      
+       pre_init.c.obj        4      0         0      
+    +--+---------------------+------+---------+---------+
+       Total:                174    0         0      
+                                                     
+       Stack:                0      0         256    
+    +--+---------------------+------+---------+---------+
+       Grand Total:          1078   872       256    
+
+
+GLOBAL SYMBOLS: SORTED ALPHABETICALLY BY Name 
+
+address   name                   
+-------   ----                   
+0000069b  C$$EXIT                
+000005e1  GPIOPinConfigure       
+00000685  GPIOPinWrite           
+0000068b  ResetISR               
+000003dd  SysCtlClockGet         
+00000691  SysCtlDelay            
+00000671  UARTCharGet            
+0000067b  UARTCharPut            
+00000569  UARTIntHandler         
+00000655  UARTSend               
+20000100  __STACK_END            
+00000100  __STACK_SIZE           
+20000100  __STACK_TOP            
+ffffffff  __TI_pprof_out_hndl    
+ffffffff  __TI_prof_data_size    
+ffffffff  __TI_prof_data_start   
+00000000  __TI_static_base__     
+000004ed  __aeabi_memclr         
+000004ed  __aeabi_memclr4        
+000004ed  __aeabi_memclr8        
+000004ef  __aeabi_memset         
+000004ef  __aeabi_memset4        
+000004ef  __aeabi_memset8        
+ffffffff  __binit__              
+ffffffff  __c_args__             
+UNDEFED   __mpu_init             
+20000000  __stack                
+20000000  __start___llvm_prf_cnts
+20000000  __stop___llvm_prf_cnts 
+00000629  _c_int00_noinit_noargs 
+00000697  _system_pre_init       
+0000069b  abort                  
+ffffffff  binit                  
+00000000  g_pfnVectors           
+0000026d  main                   
+000004f5  memset                 
+
+
+GLOBAL SYMBOLS: SORTED BY Symbol Address 
+
+address   name                   
+-------   ----                   
+00000000  __TI_static_base__     
+00000000  g_pfnVectors           
+00000100  __STACK_SIZE           
+0000026d  main                   
+000003dd  SysCtlClockGet         
+000004ed  __aeabi_memclr         
+000004ed  __aeabi_memclr4        
+000004ed  __aeabi_memclr8        
+000004ef  __aeabi_memset         
+000004ef  __aeabi_memset4        
+000004ef  __aeabi_memset8        
+000004f5  memset                 
+00000569  UARTIntHandler         
+000005e1  GPIOPinConfigure       
+00000629  _c_int00_noinit_noargs 
+00000655  UARTSend               
+00000671  UARTCharGet            
+0000067b  UARTCharPut            
+00000685  GPIOPinWrite           
+0000068b  ResetISR               
+00000691  SysCtlDelay            
+00000697  _system_pre_init       
+0000069b  C$$EXIT                
+0000069b  abort                  
+20000000  __stack                
+20000000  __start___llvm_prf_cnts
+20000000  __stop___llvm_prf_cnts 
+20000100  __STACK_END            
+20000100  __STACK_TOP            
+ffffffff  __TI_pprof_out_hndl    
+ffffffff  __TI_prof_data_size    
+ffffffff  __TI_prof_data_start   
+ffffffff  __binit__              
+ffffffff  __c_args__             
+ffffffff  binit                  
+UNDEFED   __mpu_init             
+
+[36 symbols]
