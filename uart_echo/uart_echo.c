@@ -161,6 +161,9 @@ main(void)
     // Enable the GPIO port that is used for the on-board LED.
     //
     ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+    // set to high for testing initialization
+    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1);
+    //GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, GPIO_PIN_1);\
 
     //
     // Enable the GPIO pins for the LED (PF2).
@@ -174,8 +177,8 @@ main(void)
     ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
     ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
     // UART1
-    ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
-    ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
+//    ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART1);
+//    ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
 
     //
     // Enable processor interrupts.
@@ -192,9 +195,9 @@ main(void)
     // UART1
     // Set GPIO B0 and B1 as UART pins.
     //
-    GPIOPinConfigure(GPIO_PB0_U1RX);
-    GPIOPinConfigure(GPIO_PB1_U1TX);
-    ROM_GPIOPinTypeUART(GPIO_PORTB_BASE, GPIO_PIN_0 | GPIO_PIN_1);
+//    GPIOPinConfigure(GPIO_PB0_U1RX);
+//    GPIOPinConfigure(GPIO_PB1_U1TX);
+//    ROM_GPIOPinTypeUART(GPIO_PORTB_BASE, GPIO_PIN_0 | GPIO_PIN_1);
 
     // UART0
     // Configure the UART for 115,200, 8-N-1 operation.
@@ -206,9 +209,9 @@ main(void)
     // UART1
     // Configure the UART for 115,200, 8-N-1 operation.
     //
-    ROM_UARTConfigSetExpClk(UART1_BASE, ROM_SysCtlClockGet(), 115200,
-                            (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
-                             UART_CONFIG_PAR_NONE));
+//    ROM_UARTConfigSetExpClk(UART1_BASE, ROM_SysCtlClockGet(), 115200,
+//                            (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
+//                             UART_CONFIG_PAR_NONE));
 
     // UART0
     // Enable the UART interrupt.
@@ -219,8 +222,14 @@ main(void)
     // UART1
     // Enable the UART interrupt.
     //
-    ROM_IntEnable(INT_UART1);
-    ROM_UARTIntEnable(UART1_BASE, UART_INT_RX | UART_INT_RT);
+//    ROM_IntEnable(INT_UART1);
+//    ROM_UARTIntEnable(UART1_BASE, UART_INT_RX | UART_INT_RT);
+
+    // Enable pin for digital output to modulator (PA2, PA3?)
+    ROM_GPIOPinTypeGPIOOutput(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_3);
+    //GPIOPinTypeGPIOOutput(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_3);
+    // initially set to high for testing
+    GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_3, GPIO_PIN_2 | GPIO_PIN_3);
 
     int32_t tempChar = 0;
     uint8_t rx_buffer[10];
@@ -243,43 +252,18 @@ main(void)
         }while((char) rx_buffer[i-1] != '\n'); // might need to consider '\r' as a message terminator as well
 
 
-        // write rx_buffer to UART console
+        // interpret user response and enter desired mode of operation
         if(rx_buffer[0] == 'P'){
             UARTSend(UART0_BASE, (uint8_t *)"Entering Programming Mode: \n", 28);
+            GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_3, GPIO_PIN_2 | GPIO_PIN_3);
         }else if (rx_buffer[0] == 'R'){
             UARTSend(UART0_BASE, (uint8_t *)"Entering Readout Mode: \n", 24);
+            GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_3, 0);
         }else{
             UARTSend(UART0_BASE, (uint8_t *)"Invalid Input\n", 14);
         }
 
         // clear buffer for next input
         memset(rx_buffer, 0, sizeof(*rx_buffer));
-
-
-        // read line into rx_buffer
-//        int i=0;
-//        do{
-//            rx_buffer[i] = (uint8_t) UARTCharGet(UART0_BASE);
-//            i++;
-//        }while((char) rx_buffer[i-1] != '\n'); // might need to consider '\r' as a message terminator as well
-//
-//        // write rx_buffer to UART console
-//        int j;
-//        for(j=0; j<10; j++){
-//            UARTCharPut(UART0_BASE, '+');
-//            UARTCharPut(UART0_BASE, (unsigned char) rx_buffer[j]);
-//            rx_buffer[j]  = 0;
-//        }
-
-        /*
-        // reads one char and handles 'a', 'b', and 'default' cases
-        tempChar = UARTCharGet(UART0_BASE);
-        if(tempChar == 0x61){
-            UARTSend((uint8_t *)"\033[2JEnter aaaa: ", 16);
-        }else if (tempChar == 0x62){
-            UARTSend((uint8_t *)"\033[2JEnter bbbb: ", 16);
-        }
-        UARTSend((uint8_t *)"\033[2JEnter text: ", 16);
-        */
     }
 }
