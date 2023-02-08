@@ -66,6 +66,7 @@ void init_LED();
 void init_UART0();
 void init_UART1();
 void init_IO_pins();
+void init_5V_output();
 void test_IO();
 
 //*****************************************************************************
@@ -192,6 +193,7 @@ main(void)
     init_UART0();
     //init_UART1();
     init_IO_pins();
+    init_5V_output();
 
     // UART Variables
     memset(rx_buffer, 0, sizeof(*rx_buffer));
@@ -204,7 +206,10 @@ main(void)
     enum MODES OPERATING_MODE;
     OPERATING_MODE = UNKNOWN;
 
-
+    // function is used to test digital output to modulator
+    // contains an infinite loop
+    test_IO();
+    /*
     while(1)
     {
         //tesing UARTReadString function
@@ -213,6 +218,7 @@ main(void)
 //        UARTSendString(UART0_BASE, (uint8_t *) rx_buffer, 10);
 
         switch(state){
+
             case PC_initial:
                 while(1){
                     if(OPERATING_MODE == UNKNOWN){
@@ -263,24 +269,30 @@ main(void)
 
                         // end of programming mode testing
                         next_state = PC_initial;
+                        // not for testing
+                        // next_state = Tx_mode;
                         OPERATING_MODE = UNKNOWN;
 
                     }else if(OPERATING_MODE == READOUT_MODE){
                         UARTSendString(UART0_BASE, (uint8_t *)"Readout Mode: \n", 15);
                     }else{
                         UARTSendString(UART0_BASE, (uint8_t *)"EXCEPTION: INVALID MODE\n", 24);
+                        next_state = PC_initial;
                     }
                 }
                 break;
-            case PC_report:
 
-                break;
             case Tx_mode:
 
                 break;
             case Rx_mode:
 
                 break;
+
+            case PC_report:
+
+                break;
+
             default:
                 UARTSendString(UART0_BASE, (uint8_t *)"Invalid State\n", 14);
                 next_state = PC_initial;
@@ -290,7 +302,7 @@ main(void)
         // clear buffer for next input
         memset(rx_buffer, 0, sizeof(*rx_buffer));
         state = next_state;
-    }
+    }*/
 }
 
 //enables red on-board LED
@@ -358,25 +370,40 @@ void init_IO_pins(){
     GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_3, GPIO_PIN_2 | GPIO_PIN_3);
 }
 
+// enables the 5V output required for the modulator
+// allows PA7 to be connected to external resistor and power supply for 5V output
+void init_5V_output(){
+    GPIOPinTypeGPIOOutputOD(GPIO_PORTA_BASE, GPIO_PIN_7);
+    GPIOPinTypeGPIOOutputOD(GPIO_PORTA_BASE, GPIO_PIN_6);
+}
+
 // Function designed to test digital output to modulator
-uint8_t test_bitstream[16] = {0,1,0,1,0,0,1,1,0,1,0,0,0,1,1,1};
+// PA2 and PA3 are for 3.3V output
+// PA7 is used for 5 V outputs connected to external power supply
+//uint8_t test_bitstream[16] = {0,1,0,1,0,0,1,1,0,1,0,0,0,1,1,1};
+uint8_t test_bitstream[16] = {0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1};
 int count = 0;
 void test_IO(){
     int i = 0;
+    GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_7, GPIO_PIN_7);
+    GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_6, 0);
     while(1){
         if(test_bitstream[i] == 0){
-            GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_3, 0);
+            //GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_3, 0);
+            GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_7, 0);
+            GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_6, GPIO_PIN_6);
             UARTSendString(UART0_BASE, (uint8_t *)"0", 1);
+//            UARTSendString(UART1_BASE, (uint8_t *)"0", 1);
         }else{
-            GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_3, GPIO_PIN_2 | GPIO_PIN_3);
+            //GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_3, GPIO_PIN_2 | GPIO_PIN_3);
+            GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_7, GPIO_PIN_7);
+            GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_6, 0);
             UARTSendString(UART0_BASE, (uint8_t *)"1", 1);
+//            UARTSendString(UART1_BASE, (uint8_t *)"1", 1);
         }
         i++;
         if(i == 16) i=0;
 
-        //simple delay
-        while(count < 10000000){
-            count++;
-        }
+        SysCtlDelay(160000);
     }
 }
