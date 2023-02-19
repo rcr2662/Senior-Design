@@ -1,382 +1,160 @@
-//*****************************************************************************
-//
-// uart_echo.c - Example for reading data from and writing data to the UART in
-//               an interrupt driven fashion.
-//
-// Copyright (c) 2012-2017 Texas Instruments Incorporated.  All rights reserved.
-// Software License Agreement
-// 
-// Texas Instruments (TI) is supplying this software for use solely and
-// exclusively on TI's microcontroller products. The software is owned by
-// TI and/or its suppliers, and is protected under applicable copyright
-// laws. You may not combine this software with "viral" open-source
-// software in order to form a larger program.
-// 
-// THIS SOFTWARE IS PROVIDED "AS IS" AND WITH ALL FAULTS.
-// NO WARRANTIES, WHETHER EXPRESS, IMPLIED OR STATUTORY, INCLUDING, BUT
-// NOT LIMITED TO, IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-// A PARTICULAR PURPOSE APPLY TO THIS SOFTWARE. TI SHALL NOT, UNDER ANY
-// CIRCUMSTANCES, BE LIABLE FOR SPECIAL, INCIDENTAL, OR CONSEQUENTIAL
-// DAMAGES, FOR ANY REASON WHATSOEVER.
-// 
-// This is part of revision 2.1.4.178 of the EK-TM4C123GXL Firmware Package.
-//
-//*****************************************************************************
-
 #include <stdint.h>
 #include <stdbool.h>
-#include <stdio.h>
-#include "inc/hw_ints.h"
+#include <stdlib.h>
 #include "inc/hw_memmap.h"
-#include "driverlib/debug.h"
-#include "driverlib/fpu.h"
+#include "inc/hw_types.h"
+#include "inc/hw_ints.h"
 #include "driverlib/gpio.h"
-#include "driverlib/interrupt.h"
 #include "driverlib/pin_map.h"
-#include "driverlib/rom.h"
 #include "driverlib/sysctl.h"
 #include "driverlib/uart.h"
+#include "driverlib/interrupt.h"
+#include "driverlib/eeprom.h"
 
-//*****************************************************************************
-//
-//! \addtogroup example_list
-//! <h1>UART Echo (uart_echo)</h1>
-//!
-//! This example application utilizes the UART to echo text.  The first UART
-//! (connected to the USB debug virtual serial port on the evaluation board)
-//! will be configured in 115,200 baud, 8-n-1 mode.  All characters received on
-//! the UART are transmitted back to the UART.
-//
-//*****************************************************************************
+#define BAUD_RATE 115200
+#define MAX_MSG_LEN 64
 
-//*****************************************************************************
 //
-// The error routine that is called if the driver library encounters an error.
+//Interrupt handler for UARTs
 //
-//*****************************************************************************
-#ifdef DEBUG
-void
-__error__(char *pcFilename, uint32_t ui32Line)
-{
-}
-#endif
-
-// user-made function declarations
-void init_LED();
-void init_UART0();
-void init_UART1();
-void init_IO_pins();
-void test_IO();
-
-//*****************************************************************************
-//
-// The UART interrupt handler.
-//
-//*****************************************************************************
-void
-UARTIntHandler(void)
+void UARTIntHandler(void)
 {
     uint32_t ui32Status;
 
-    //
-    // Get the interrrupt status.
-    //
-    ui32Status = ROM_UARTIntStatus(UART0_BASE, true);
+    // Get the interrupt status.
+    ui32Status = UARTIntStatus(UART0_BASE, true);
 
-    //
     // Clear the asserted interrupts.
-    //
-    ROM_UARTIntClear(UART0_BASE, ui32Status);
+    UARTIntClear(UART0_BASE, ui32Status);
 
-    //
-    // Loop while there are characters in the receive FIFO.
-    //
-    while(ROM_UARTCharsAvail(UART0_BASE))
+    while(UARTCharsAvail(UART0_BASE))
     {
-        //
-        // Read the next character from the UART and write it back to the UART.
-        //
-        ROM_UARTCharPutNonBlocking(UART0_BASE,
-                                   ROM_UARTCharGetNonBlocking(UART0_BASE));
-
-        //
-        // Blink the LED to show a character transfer is occuring.
-        //
-        GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, GPIO_PIN_2);
-
-        //
-        // Delay for 1 millisecond.  Each SysCtlDelay is about 3 clocks.
-        //
-        SysCtlDelay(SysCtlClockGet() / (1000 * 3));
-
-        //
-        // Turn off the LED
-        //
-        GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, 0);
-
+        // Read the next character from the UART and write it to the other UART.
+        UARTCharPut(UART1_BASE, UARTCharGet(UART0_BASE));
     }
 }
 
-//*****************************************************************************
 //
-// Send a string to the UART.
+// Uses char pointer pui8Buffer to put char string to ui32Base.
 //
-//*****************************************************************************
-void UARTSendString(uint32_t ui32Base, const uint8_t *pui8Buffer, uint32_t ui32Count){
-    int i;
-    for(i=0; i<ui32Count; i++){
-        UARTCharPut(ui32Base, pui8Buffer[i]);
+void UARTSendString(uint32_t ui32Base, const char *pui8Buffer)
+{
+    while (*pui8Buffer != '\0')
+    {
+        UARTCharPut(ui32Base, *pui8Buffer);
+        pui8Buffer++;
     }
 }
 
-// Read string from the UART
-void UARTReadString(uint32_t ui32Base, uint8_t * rxBuffer){
+//
+// Gets chars from ui32Base and stores them in rxBuffer.
+//
+void UARTReadString(uint32_t ui32Base, char * rxBuffer){
     // load user response into rx_buffer
     int i=0;
     do{
-        rxBuffer[i] = (uint8_t) UARTCharGet(ui32Base);
+        rxBuffer[i] = (char) UARTCharGet(ui32Base);
         i++;
-    }while((char) rxBuffer[i-1] != '\n'); // might need to consider '\r' as a message terminator as well
+    }while(rxBuffer[i-1] != '\n'); // might need to consider '\r' as a message terminator as well
 }
 
-
-// UART rx_buffer
-uint8_t rx_buffer[10];
-
-// State Enumerations
-enum MODES {
-  PROGRAMMING_MODE,
-  READOUT_MODE,
-  UNKNOWN
-};
-
-enum states
-{
-    PC_initial,
-    PC_report,
-    Tx_mode,
-    Rx_mode
-};
-
-// Programming Variables
-uint8_t serial_number[4] = {0};
-uint8_t calibration_data[4] = {0};
-
-//*****************************************************************************
 //
-// This example demonstrates how to send a string of data to the UART.
+// Initializes UART0 and UART1.
 //
-//*****************************************************************************
-int
-main(void)
-{
-    // Enable lazy stacking for interrupt handlers.  This allows floating-point
-    // instructions to be used within interrupt handlers, but at the expense of
-    // extra stack usage.
+void setUpUARTs(){
+    // Set the system clock to run at 80MHz
+    SysCtlClockSet(SYSCTL_SYSDIV_2_5 | SYSCTL_USE_PLL | SYSCTL_XTAL_16MHZ | SYSCTL_OSC_MAIN);
+
+    // Enable UART0 and GPIO port A
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
+
+    // Configure the UART0 pins
+    GPIOPinConfigure(GPIO_PA0_U0RX);
+    GPIOPinConfigure(GPIO_PA1_U0TX);
+    GPIOPinTypeUART(GPIO_PORTA_BASE, GPIO_PIN_0 | GPIO_PIN_1);
+
+    // Configure the UART0 settings
+    UARTConfigSetExpClk(UART0_BASE, SysCtlClockGet(), BAUD_RATE,
+                        (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE));
+
+    // Enable UART0
+    UARTEnable(UART0_BASE);
+
+    // Enable UART1 and GPIO port B
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_UART1);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
+
+    // Configure the UART1 pins
+    GPIOPinConfigure(GPIO_PB0_U1RX);
+    GPIOPinConfigure(GPIO_PB1_U1TX);
+    GPIOPinTypeUART(GPIO_PORTB_BASE, GPIO_PIN_0 | GPIO_PIN_1);
+
+    // Configure the UART1 settings
+    UARTConfigSetExpClk(UART1_BASE, SysCtlClockGet(), BAUD_RATE,
+                        (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE));
+
+    // Enable UART1
+    UARTEnable(UART1_BASE);
+
+    // Enable UART0 interrupt on receive.
+    UARTIntEnable(UART0_BASE, UART_INT_RX);
+    IntEnable(INT_UART0);
+
+    // Enable UART1 interrupt on receive.
+    UARTIntEnable(UART1_BASE, UART_INT_RX);
+    IntEnable(INT_UART1);
+}
+
+//
+// Initializes EEPROM
+//
+void setUpEEPROM(){
     //
-    ROM_FPUEnable();
-    ROM_FPULazyStackingEnable();
-
+    // Enable the EEPROM module.
     //
-    // Set the clocking to run directly from the crystal.
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_EEPROM0);
     //
-    ROM_SysCtlClockSet(SYSCTL_SYSDIV_1 | SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
-                       SYSCTL_XTAL_16MHZ);
-
+    // Wait for the EEPROM module to be ready.
     //
-    // Enable processor interrupts.
+    while(!SysCtlPeripheralReady(SYSCTL_PERIPH_EEPROM0)){}
     //
-    ROM_IntMasterEnable();
-
-    init_LED();
-    init_UART0();
-    //init_UART1();
-    init_IO_pins();
-
-    // UART Variables
-    memset(rx_buffer, 0, sizeof(*rx_buffer));
-
-    // State machine variables
-    enum states state = PC_initial;
-    enum states next_state;
-
-    // Communication variables and flags
-    enum MODES OPERATING_MODE;
-    OPERATING_MODE = UNKNOWN;
-
-
-    while(1)
-    {
-        //tesing UARTReadString function
-//        UARTSendString(UART0_BASE, (uint8_t *)"Program or Readout? (P/R): ", 27);
-//        UARTReadString(UART0_BASE, &rx_buffer);
-//        UARTSendString(UART0_BASE, (uint8_t *) rx_buffer, 10);
-
-        switch(state){
-            case PC_initial:
-                while(1){
-                    if(OPERATING_MODE == UNKNOWN){
-                        // prompt user input
-                        UARTSendString(UART0_BASE, (uint8_t *)"Program or Readout? (P/R): ", 27);
-
-                        // load user response into rx_buffer
-                        UARTReadString(UART0_BASE, &rx_buffer);
-
-                        // interpret user response and enter desired mode of operation
-                        if(rx_buffer[0] == 'P'){
-                            //UARTSend(UART0_BASE, (uint8_t *)"Entering Programming Mode: \n", 28);
-                            //GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_3, GPIO_PIN_2 | GPIO_PIN_3);
-                            OPERATING_MODE = PROGRAMMING_MODE;
-                        }else if (rx_buffer[0] == 'R'){
-                            //UARTSend(UART0_BASE, (uint8_t *)"Entering Readout Mode: \n", 24);
-                            //GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_3, 0);
-                            OPERATING_MODE = READOUT_MODE;
-                        }else{
-                            UARTSendString(UART0_BASE, (uint8_t *)"Invalid Input\n", 14);
-                        }
-
-                    }else if(OPERATING_MODE == PROGRAMMING_MODE){
-                        // enter programming mode
-                        UARTSendString(UART0_BASE, (uint8_t *)"Programming Mode: \n", 19);
-                        // prompt user for serial number
-                        UARTSendString(UART0_BASE, (uint8_t *)"Enter Serial Number (4 characters)\n", 35);
-                        // read serial number
-                        UARTReadString(UART0_BASE, &rx_buffer);
-                        memcpy(serial_number, rx_buffer, 4);
-
-                        // clear rx_buffer between data reads
-                        memset(rx_buffer, 0, sizeof(*rx_buffer));
-
-                        // prompt user for calibration data
-                        UARTSendString(UART0_BASE, (uint8_t *)"Enter Calibration Data (4 characters)\n", 38);
-                        // read calibration data
-                        UARTReadString(UART0_BASE, &rx_buffer);
-                        memcpy(calibration_data, rx_buffer, 4);
-
-                        // display data to user
-                        UARTSendString(UART0_BASE, (uint8_t *)"Sending data to Antenna MCU\n", 28);
-                        UARTSendString(UART0_BASE, (uint8_t *)"Serial Number: ", 15);
-                        UARTSendString(UART0_BASE, (uint8_t *) serial_number, 4);
-                        UARTSendString(UART0_BASE, (uint8_t *)" Cal data: ", 11);
-                        UARTSendString(UART0_BASE, (uint8_t *) calibration_data, 4);
-                        UARTSendString(UART0_BASE, (uint8_t *)"\n", 1);
-
-                        // end of programming mode testing
-                        next_state = PC_initial;
-                        OPERATING_MODE = UNKNOWN;
-
-                    }else if(OPERATING_MODE == READOUT_MODE){
-                        UARTSendString(UART0_BASE, (uint8_t *)"Readout Mode: \n", 15);
-                    }else{
-                        UARTSendString(UART0_BASE, (uint8_t *)"EXCEPTION: INVALID MODE\n", 24);
-                    }
-                }
-                break;
-            case PC_report:
-
-                break;
-            case Tx_mode:
-
-                break;
-            case Rx_mode:
-
-                break;
-            default:
-                UARTSendString(UART0_BASE, (uint8_t *)"Invalid State\n", 14);
-                next_state = PC_initial;
-                break;
-        }
-
-        // clear buffer for next input
-        memset(rx_buffer, 0, sizeof(*rx_buffer));
-        state = next_state;
+    // Wait for the EEPROM Initialization to complete
+    //
+    uint32_t ui32EEPROMInit = EEPROMInit();
+    //
+    // Check if the EEPROM Initialization returned an error
+    // and inform the application
+    //
+    if(ui32EEPROMInit != EEPROM_INIT_OK){
+        const char* prompt = "Error Initializing EEPROM.\n";
+        UARTSendString(UART0_BASE, prompt);
+        exit(0);
     }
 }
 
-//enables red on-board LED
-void init_LED(){
-    //
-    // Enable the GPIO port that is used for the on-board LED.
-    //
-    ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
-    // set to high for testing initialization
-    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1);
-    //GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, GPIO_PIN_1);
-}
+//
+// Any input received through UART1 is stored on the EEPROM and read back. It is then sent to UART0 to be
+// displayed.
+//
+int main(void) {
+    setUpUARTs();
+    setUpEEPROM();
 
+    while (1)
+    {
+        char msg[MAX_MSG_LEN + 1];  //message buffer
 
-
-// enables UART0 using Rx - PA0 and Tx - PA1
-void init_UART0(){
-    // Enable peripherals
-    ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
-    ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
-
-    // Set GPIO A0 and A1 as UART pins.
-    GPIOPinConfigure(GPIO_PA0_U0RX);
-    GPIOPinConfigure(GPIO_PA1_U0TX);
-    ROM_GPIOPinTypeUART(GPIO_PORTA_BASE, GPIO_PIN_0 | GPIO_PIN_1);
-
-    // Configure the UART for 115,200, 8-N-1 operation.
-    ROM_UARTConfigSetExpClk(UART0_BASE, ROM_SysCtlClockGet(), 115200,
-                            (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
-                             UART_CONFIG_PAR_NONE));
-
-    // Enable the UART interrupt.
-    ROM_IntEnable(INT_UART0);
-    ROM_UARTIntEnable(UART0_BASE, UART_INT_RX | UART_INT_RT);
-
-}
-
-// enables UART1 using Rx - PB0 and Tx - PB1
-void init_UART1(){
-    // Enable peripherals
-    ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART1);
-    ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
-
-    // Set GPIO B0 and B1 as UART pins.
-    GPIOPinConfigure(GPIO_PB0_U1RX);
-    GPIOPinConfigure(GPIO_PB1_U1TX);
-    ROM_GPIOPinTypeUART(GPIO_PORTB_BASE, GPIO_PIN_0 | GPIO_PIN_1);
-
-    // Configure the UART for 115,200, 8-N-1 operation.
-    ROM_UARTConfigSetExpClk(UART1_BASE, ROM_SysCtlClockGet(), 115200,
-                            (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
-                             UART_CONFIG_PAR_NONE));
-
-    // Enable the UART interrupt.
-    ROM_IntEnable(INT_UART1);
-    ROM_UARTIntEnable(UART1_BASE, UART_INT_RX | UART_INT_RT);
-}
-
-// enables PA2 and PA3 as digital outputs to modulator
-void init_IO_pins(){
-    // Enable pin for digital output to modulator (PA2, PA3?)
-    ROM_GPIOPinTypeGPIOOutput(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_3);
-
-    // initially set to high for testing
-    GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_3, GPIO_PIN_2 | GPIO_PIN_3);
-}
-
-// Function designed to test digital output to modulator
-uint8_t test_bitstream[16] = {0,1,0,1,0,0,1,1,0,1,0,0,0,1,1,1};
-int count = 0;
-void test_IO(){
-    int i = 0;
-    while(1){
-        if(test_bitstream[i] == 0){
-            GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_3, 0);
-            UARTSendString(UART0_BASE, (uint8_t *)"0", 1);
-        }else{
-            GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_3, GPIO_PIN_2 | GPIO_PIN_3);
-            UARTSendString(UART0_BASE, (uint8_t *)"1", 1);
-        }
-        i++;
-        if(i == 16) i=0;
-
-        //simple delay
-        while(count < 10000000){
-            count++;
-        }
+        // Wait for a message on UART1. Store it in the EEPROM
+        // then read it back. Send stored data to UART0.
+        while(!UARTCharsAvail(UART1_BASE)){}
+        UARTReadString(UART1_BASE, msg);
+        
+        EEPROMProgram(msg, 0x500, sizeof(msg));
+        EEPROMRead(msg, 0x500, sizeof(msg));
+        
+        UARTSendString(UART0_BASE, "Received message: ");
+        UARTSendString(UART0_BASE, msg);
+        UARTSendString(UART0_BASE, "\n");
     }
 }
