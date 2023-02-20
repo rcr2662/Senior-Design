@@ -55,7 +55,7 @@ void UARTReadString(uint32_t ui32Base, char * rxBuffer){
     do{
         rxBuffer[i] = (char) UARTCharGet(ui32Base);
         i++;
-    }while(rxBuffer[i-1] != '\n'); // might need to consider '\r' as a message terminator as well
+    }while((rxBuffer[i-1] != '\n') (rxBuffer[i-1] != '\r') (rxBuffer[i-1] != '\0')); // might need to consider '\r' as a message terminator as well
 }
 
 //
@@ -145,7 +145,8 @@ int main(void) {
 
     while (1)
     {
-        char msg[MAX_MSG_LEN + 1];  //message buffer
+        char msg[MAX_MSG_LEN + 1];                  //message buffer
+        uint32_t *msg_ptr = (uint32_t *)msg;        //pointer to buffer
 
         // Prompt the user for input on UART0.
         const char* prompt = "Enter a message:\n";
@@ -155,16 +156,16 @@ int main(void) {
         // then read it back. Send read data to UART1.
         while(!UARTCharsAvail(UART0_BASE)){}
         UARTReadString(UART0_BASE, msg);
-        EEPROMProgram(msg, 0x400, sizeof(msg));
-        EEPROMRead(msg, 0x400, sizeof(msg));
+        EEPROMProgram(msg_ptr, 0x400, sizeof(msg));
+        EEPROMRead(msg_ptr, 0x400, sizeof(msg));
         UARTSendString(UART1_BASE, msg);
 
         // Wait for a message on UART1. Store it in the EEPROM
         // then read it back. Send read data to UART0.
         while(!UARTCharsAvail(UART1_BASE)){}
         UARTReadString(UART1_BASE, msg);
-        EEPROMProgram(msg, 0x500, sizeof(msg));
-        EEPROMRead(msg, 0x500, sizeof(msg));
+        EEPROMProgram(msg_ptr, 0x500, sizeof(msg));
+        EEPROMRead(msg_ptr, 0x500, sizeof(msg));
         UARTSendString(UART0_BASE, "Received message: ");
         UARTSendString(UART0_BASE, msg);
         UARTSendString(UART0_BASE, "\n");
