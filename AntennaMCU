@@ -429,5 +429,10 @@ main(void)
             send();
         }
     }
+    
+    //
+    // Loop so program does not terminate
+    //
+    while(1){}
 }
 
