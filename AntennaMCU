@@ -39,14 +39,16 @@
 #include "driverlib/uart.h"
 #include "driverlib/timer.h"
 #include "driverlib/eeprom.h"
+#include "driverlib/comp.h"
 
 
 void initMain(void);
 void UART1_Init(void);
 void init_UART0(void);
 void setUpEEPROM(void);
-void TimerIntHandler(void);
-void initTimer(void);
+void Timer0IntHandler(void);
+void Timer1IntHandler(void);
+void initTimers(void);
 void receive(void);
 void send(void);
 
@@ -282,11 +284,11 @@ init_UART0(void){
 
 //*****************************************************************************
 //
-// This is the timer interrupt handler
+// This is the timer0 interrupt handler
 //
 //*****************************************************************************
 void
-TimerIntHandler(void) {
+Timer0IntHandler(void) {
     //
     // Clear the interrupt flag
     //
@@ -301,28 +303,99 @@ TimerIntHandler(void) {
 
 //*****************************************************************************
 //
-// This initializes timer0
+// This is the timer1 interrupt handler
 //
 //*****************************************************************************
 void
-initTimer(void){
+Timer1IntHandler(void) {
     //
-    // Configure Timer0 as a 32-bit periodic timer with a period of 500 ms
+    // Clear the interrupt flag
+    //
+    TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
+
+    //
+    // Read comparator values and set output pin accordingly
+    if(ComparatorValueGet(COMP_BASE, 0)){
+        GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, GPIO_PIN_1);
+    }else {
+        GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, 0);
+    }
+}
+
+
+//*****************************************************************************
+//
+// This initializes timer0 and timer1
+//
+//*****************************************************************************
+void
+initTimers(void){
+    //
+    // Configure Timer0 as a 32-bit one shot timer with a period of 500 ms
     //
     SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
-    TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);
-    TimerLoadSet(TIMER0_BASE, TIMER_A, SysCtlClockGet());
+    TimerConfigure(TIMER0_BASE, TIMER_CFG_ONE_SHOT);
+    TimerLoadSet(TIMER0_BASE, TIMER_A, (SysCtlClockGet() / 2) - 1);
 
     //
     // Enable the Timer0 interrupt and register the ISR
     //
     TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
-    TimerIntRegister(TIMER0_BASE, TIMER_A, TimerIntHandler);
+    TimerIntRegister(TIMER0_BASE, TIMER_A, Timer0IntHandler);
+
+
+    //
+    // Configure Timer1 as a 32-bit periodic timer with a period of 416 clock cycles
+    //
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1);
+    TimerConfigure(TIMER1_BASE, TIMER_CFG_PERIODIC);
+    TimerLoadSet(TIMER1_BASE, TIMER_A, 416);
+
+    //
+    // Enable the Timer1 interrupt and register the ISR
+    //
+    TimerIntEnable(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
+    TimerIntRegister(TIMER1_BASE, TIMER_A, Timer1IntHandler);
 }
 
 
-// Sends string to the desired UART
-void UARTSendString(uint32_t ui32Base, const uint8_t *pui8Buffer, uint32_t ui32Count){
+//*****************************************************************************
+//
+// This initializes the comparator
+//
+//*****************************************************************************
+void
+init_comparator(){
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_COMP0);
+
+    GPIOPinTypeComparator(GPIO_PORTC_BASE, GPIO_PIN_7);
+
+    // Enable the COMP module.
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_COMP0);
+
+    // Wait for the COMP module to be ready.
+    while(!SysCtlPeripheralReady(SYSCTL_PERIPH_COMP0))
+    {
+    }
+
+    ComparatorRefSet(COMP_BASE, COMP_REF_0_275V);
+    ComparatorConfigure(COMP_BASE, 0,(COMP_TRIG_NONE | COMP_ASRCP_REF | COMP_OUTPUT_INVERT));
+    SysCtlDelay(100000);
+
+}
+
+
+
+//*****************************************************************************
+//
+// // Sends string to the desired UART
+//
+//*****************************************************************************
+void
+UARTSendString(uint32_t ui32Base, const uint8_t *pui8Buffer, uint32_t ui32Count){
     int i;
     for(i=0; i<ui32Count; i++){
         UARTCharPut(ui32Base, pui8Buffer[i]);
@@ -366,26 +439,29 @@ receive(){
     //
     EEPROMProgram((uint32_t*)rx_buffer, 0x400, sizeof(rx_buffer));
 
+    //
     // decompress rx_buffer into 1 byte per hex character
-                  int i;
-                  for(i=2*19-1; i>1; i-=2){
-                      rx_buffer[i-1] = rx_buffer[i/2] >> 4;
-                      rx_buffer[i] = rx_buffer[i/2] & 0x0F;
-                  }
-                  rx_buffer[1] = rx_buffer[0] & 0x0F;
-                  rx_buffer[0] = rx_buffer[0] >> 4;
+    //
+    int i;
+    for(i=2*19-1; i>1; i-=2){
+      rx_buffer[i-1] = rx_buffer[i/2] >> 4;
+      rx_buffer[i] = rx_buffer[i/2] & 0x0F;
+    }
 
-                  for(i=0; i<19*2; i++){
-                      if(rx_buffer[i] >= 0x00 && rx_buffer[i] <= 0x09){
-                          rx_buffer[i] += 0x30;
-                      }else if(rx_buffer[i] >= 0x0A && rx_buffer[i] <= 0x0F){
-                          rx_buffer[i] += 0x37;
-                      }else
-                          rx_buffer[i] = '\0';
-                  }
+    rx_buffer[1] = rx_buffer[0] & 0x0F;
+    rx_buffer[0] = rx_buffer[0] >> 4;
 
-                  UARTSendString(UART0_BASE, (uint8_t *) rx_buffer, 38);
-                  UARTSendString(UART0_BASE, (uint8_t *) "\n", 1);
+    for(i=0; i<19*2; i++){
+        if(rx_buffer[i] >= 0x00 && rx_buffer[i] <= 0x09){
+            rx_buffer[i] += 0x30;
+        }else if(rx_buffer[i] >= 0x0A && rx_buffer[i] <= 0x0F){
+            rx_buffer[i] += 0x37;
+        }else
+            rx_buffer[i] = '\0';
+    }
+
+    UARTSendString(UART0_BASE, (uint8_t *) rx_buffer, 38);
+    UARTSendString(UART0_BASE, (uint8_t *) "\n", 1);
 
 }
 
@@ -407,35 +483,35 @@ void send(){
     //
     EEPROMRead((uint32_t*)rx_buffer, 0x400, sizeof(rx_buffer));
     rx_buffer[19] = '\n';
-    UARTSendString(UART1_BASE, (uint8_t *) "\r", 1);
-    UARTSendString(UART1_BASE, (uint8_t *) rx_buffer, 20);
 
     //
     // Send buffer to UART1
     //
-//    int i = 0;
-//    for (i = 0; i < sizeof(rx_buffer); i++) {
-//       UARTCharPut(UART0_BASE, rx_buffer[i]); // send each character of the message
-//    }
-      int i;
-      for(i=2*19-1; i>1; i-=2){
-          rx_buffer[i-1] = rx_buffer[i/2] >> 4;
-          rx_buffer[i] = rx_buffer[i/2] & 0x0F;
-      }
-      rx_buffer[1] = rx_buffer[0] & 0x0F;
-      rx_buffer[0] = rx_buffer[0] >> 4;
+    UARTSendString(UART1_BASE, (uint8_t *) "\r", 1);
+    UARTSendString(UART1_BASE, (uint8_t *) rx_buffer, 20);
 
-      for(i=0; i<19*2; i++){
-          if(rx_buffer[i] >= 0x00 && rx_buffer[i] <= 0x09){
-              rx_buffer[i] += 0x30;
-          }else if(rx_buffer[i] >= 0x0A && rx_buffer[i] <= 0x0F){
-              rx_buffer[i] += 0x37;
-          }else
-              rx_buffer[i] = '\0';
-      }
+    //
+    // decompress rx_buffer into 1 byte per hex character
+    //
+    int i;
+    for(i=2*19-1; i>1; i-=2){
+        rx_buffer[i-1] = rx_buffer[i/2] >> 4;
+        rx_buffer[i] = rx_buffer[i/2] & 0x0F;
+    }
+    rx_buffer[1] = rx_buffer[0] & 0x0F;
+    rx_buffer[0] = rx_buffer[0] >> 4;
 
-      UARTSendString(UART0_BASE, (uint8_t *) rx_buffer, 38);
-      UARTSendString(UART0_BASE, (uint8_t *) "\n", 1);
+    for(i=0; i<19*2; i++){
+        if(rx_buffer[i] >= 0x00 && rx_buffer[i] <= 0x09){
+            rx_buffer[i] += 0x30;
+        }else if(rx_buffer[i] >= 0x0A && rx_buffer[i] <= 0x0F){
+            rx_buffer[i] += 0x37;
+        }else
+            rx_buffer[i] = '\0';
+    }
+
+    UARTSendString(UART0_BASE, (uint8_t *) rx_buffer, 38);
+    UARTSendString(UART0_BASE, (uint8_t *) "\n", 1);
 }
 
 
@@ -453,40 +529,44 @@ main(void)
     UART1_Init();
     init_UART0();
     setUpEEPROM();
-    initTimer();
+    initTimers();
+    init_comparator();
 
-
-    // Start Timer0
-    TimerEnable(TIMER0_BASE, TIMER_A);
     //
+    // Start Timer1
+    //
+    TimerEnable(TIMER1_BASE, TIMER_A);
+
+    //
+    // Start Timer0
+    //
+    TimerEnable(TIMER0_BASE, TIMER_A);
+
 
     //
     // Check for input for 500ms
     //
+    UARTCharGet(UART1_BASE);
     while (!timerExpired) {
-      // If input received, read input into buffer
-      if (UARTCharsAvail(UART1_BASE)) {
-        TimerDisable(TIMER0_BASE, TIMER_A);
-        receive();
-        noCharReceived = false;
-        break;
-      }
+        //
+        // If input received, read input into buffer
+        //
+        if (UARTCharsAvail(UART1_BASE)) {
+            TimerDisable(TIMER0_BASE, TIMER_A);
+            receive();
+            noCharReceived = false;
+            break;
+        }
     }
+
 
     //
     // If no input receive, output what is stored
     //
     if(noCharReceived){
-//        while(1){
-            send();
-//        }
+        send();
     }
 
-    while(1){
-//        if(UARTCharsAvail(UART1_BASE)){
-//            receive();
-//            send();
-//        }
-    }
+    while(1){}
 }
 
