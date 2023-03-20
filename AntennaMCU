@@ -381,7 +381,7 @@ init_comparator(){
     {
     }
 
-    ComparatorRefSet(COMP_BASE, COMP_REF_0_275V);
+    ComparatorRefSet(COMP_BASE, COMP_REF_1_375V);
     ComparatorConfigure(COMP_BASE, 0,(COMP_TRIG_NONE | COMP_ASRCP_REF | COMP_OUTPUT_INVERT));
     SysCtlDelay(100000);
 
@@ -471,8 +471,8 @@ receive(){
 // This sends what it has stored in its EEPROM to UART1
 //
 //*****************************************************************************
-
-void send(){
+void
+send(){
     //
     // Initialize buffer
     //
@@ -514,7 +514,49 @@ void send(){
     UARTSendString(UART0_BASE, (uint8_t *) "\n", 1);
 }
 
+//*****************************************************************************
+//
+// This handles resource cleanup for shutdown
+//
+//*****************************************************************************
+void
+shutdown(){
 
+    //Turn off GPIO
+    SysCtlPeripheralDisable(SYSCTL_PERIPH_GPIOC);
+    SysCtlPeripheralDisable(SYSCTL_PERIPH_GPIOB);
+    SysCtlPeripheralDisable(SYSCTL_PERIPH_GPIOA);
+
+    //Disable Comparator
+    SysCtlPeripheralDisable(SYSCTL_PERIPH_COMP0);
+
+
+    //Turn off Timers
+    TimerIntDisable(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
+    TimerIntDisable(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
+    TimerDisable(TIMER1_BASE, TIMER_A);
+    TimerDisable(TIMER0_BASE, TIMER_A);
+    SysCtlPeripheralDisable(SYSCTL_PERIPH_TIMER0);
+    SysCtlPeripheralDisable(SYSCTL_PERIPH_TIMER1);
+
+    //Disable UARTS
+    SysCtlPeripheralDisable(SYSCTL_PERIPH_UART1);
+    MAP_UARTIntDisable(UART0_BASE, UART_INT_RX | UART_INT_RT);
+    MAP_IntDisable(INT_UART0);
+    SysCtlPeripheralDisable(SYSCTL_PERIPH_UART0);
+
+    //Disable EEPROM access
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_EEPROM0);
+
+    //Enable PF3 as output
+    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_3);
+
+    //Set PF3 to high to send kill signal
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, GPIO_PIN_3);
+
+    //Disable PortF GPIO
+    SysCtlPeripheralDisable(SYSCTL_PERIPH_GPIOF);
+}
 //*****************************************************************************
 //
 // This example demonstrates how to send a string of data to the UART.
@@ -542,11 +584,12 @@ main(void)
     //
     TimerEnable(TIMER0_BASE, TIMER_A);
 
+    //Remove garbage char
+    UARTCharGet(UART1_BASE);
 
     //
     // Check for input for 500ms
     //
-    UARTCharGet(UART1_BASE);
     while (!timerExpired) {
         //
         // If input received, read input into buffer
@@ -567,6 +610,7 @@ main(void)
         send();
     }
 
+    //shutdown();
     while(1){}
 }
 
