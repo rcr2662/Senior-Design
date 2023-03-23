@@ -105,6 +105,8 @@ initMain(void){
     //
     MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
 
+    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_4);
+
     //
     // Enable the GPIO pins for the LED (PF2).
     //
@@ -460,6 +462,7 @@ receive(){
             rx_buffer[i] = '\0';
     }
 
+    UARTSendString(UART0_BASE, (uint8_t *) "Received: ", 10);
     UARTSendString(UART0_BASE, (uint8_t *) rx_buffer, 38);
     UARTSendString(UART0_BASE, (uint8_t *) "\n", 1);
 
@@ -510,6 +513,7 @@ send(){
             rx_buffer[i] = '\0';
     }
 
+    UARTSendString(UART0_BASE, (uint8_t *) "Sent: ", 6);
     UARTSendString(UART0_BASE, (uint8_t *) rx_buffer, 38);
     UARTSendString(UART0_BASE, (uint8_t *) "\n", 1);
 }
@@ -548,14 +552,9 @@ shutdown(){
     //Disable EEPROM access
     SysCtlPeripheralEnable(SYSCTL_PERIPH_EEPROM0);
 
-    //Enable PF3 as output
-    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_3);
+    //Set PF3 to low to send kill signal
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_4, 0);
 
-    //Set PF3 to high to send kill signal
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, GPIO_PIN_3);
-
-    //Disable PortF GPIO
-    SysCtlPeripheralDisable(SYSCTL_PERIPH_GPIOF);
 }
 //*****************************************************************************
 //
@@ -565,13 +564,21 @@ shutdown(){
 int
 main(void)
 {
-    bool noCharReceived = true;
+    bool noCharReceived = true;        // Keep track if chars have been received
 
+    // Initializations
     initMain();
+    // Set Kill Switch Pin to high
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_4, GPIO_PIN_4);
+    // Initialize UART1
     UART1_Init();
+    // Initialize UART0
     init_UART0();
+    // Initialize EEPROM
     setUpEEPROM();
+    // Initialize Timers 0 and 1
     initTimers();
+    // Initialize Comparator
     init_comparator();
 
     //
@@ -592,7 +599,7 @@ main(void)
     //
     while (!timerExpired) {
         //
-        // If input received, read input into buffer
+        // If input received, disable timer and read input into buffer
         //
         if (UARTCharsAvail(UART1_BASE)) {
             TimerDisable(TIMER0_BASE, TIMER_A);
@@ -604,13 +611,16 @@ main(void)
 
 
     //
-    // If no input receive, output what is stored
+    // If no input received, output what is stored
     //
     if(noCharReceived){
         send();
     }
 
-    //shutdown();
+    // Activate Kill Switch
+    shutdown();
+
+    //Wait
     while(1){}
 }
 
