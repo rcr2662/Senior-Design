@@ -36,7 +36,29 @@ enum states
 enum states state = PC_initial;
 enum states next_state;
 
+/////////////////////////////////////////////
+//          Timer handler functions
+/////////////////////////////////////////////
 
+// function samples the output of the comparator and relays the signal to a digital pin (PF1)
+void comparator_timer_handler(void){
+    TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
+    if(ComparatorValueGet(COMP_BASE,0) == true){
+        GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, GPIO_PIN_1);
+    }else{
+        GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, 0);
+    }
+}
+
+// function is called when readout timer expires without receiving a message
+void readout_timer_handler() {
+    TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
+
+    UARTSendString(UART0_BASE, (uint8_t *) "No message received.\n", 21);
+
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, 0);
+    next_state = PC_initial;
+}
 
 /////////////////////////////////////////////
 //          initialization functions
@@ -94,7 +116,7 @@ void init_comparator(){
     SysCtlPeripheralEnable(SYSCTL_PERIPH_COMP0);
     while(!SysCtlPeripheralReady(SYSCTL_PERIPH_COMP0)){}
 
-    ComparatorRefSet(COMP_BASE, COMP_REF_0_275V);
+    ComparatorRefSet(COMP_BASE, COMP_REF_1_340625V);
     ComparatorConfigure(COMP_BASE, 0,(COMP_TRIG_NONE | COMP_ASRCP_REF | COMP_OUTPUT_INVERT));
 
     GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, GPIO_PIN_1);
@@ -128,29 +150,7 @@ void init_timer(){
     //TimerEnable(TIMER1_BASE, TIMER_A); // timer is enabled when MCU enters Readout Mode
 }
 
-/////////////////////////////////////////////
-//          Timer handler functions
-/////////////////////////////////////////////
 
-// function samples the output of the comparator and relays the signal to a digital pin (PF1)
-void comparator_timer_handler(void){
-    TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
-    if(ComparatorValueGet(COMP_BASE,0) == true){
-        GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, GPIO_PIN_1);
-    }else{
-        GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, 0);
-    }
-}
-
-// function is called when readout timer expires without receiving a message
-void readout_timer_handler() {
-    TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
-
-    UARTSendString(UART0_BASE, (uint8_t *) "No message received.\n", 21);
-
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, 0);
-    next_state = PC_initial;
-}
 
 /////////////////////////////////////////////
 //          UART functions
@@ -234,11 +234,11 @@ bool valid_data = false;
 int
 main(void)
 {
-    init_clock();
-    init_leds();
-    init_uart();
-    init_comparator();
-    init_timer();
+    init_clock(); // 16 MHz
+    init_leds(); // PF1 & PF3
+    init_uart(); // UART0 & UART1
+    init_comparator(); // COMP0
+    init_timer(); // TIMER0 & TIMER1
 
     while(1){
 
@@ -247,6 +247,10 @@ main(void)
 
               // turn off power enable
               GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, 0);
+
+              // clear buffers
+              memset(rx_buffer, 0, sizeof(*rx_buffer));
+              memset(tx_buffer, 0, sizeof(*tx_buffer));
 
               // prompt user input
               UARTSendString(UART0_BASE, (uint8_t *)"Program or Readout? (P/R): ", 27);
@@ -257,6 +261,7 @@ main(void)
               // interpret user response and enter desired mode of operation
               if(user_input_buffer[0] == 'P'){
                    UARTSendString(UART0_BASE, (uint8_t *)"Entering Programming Mode: \n", 28);
+                   memset(tx_buffer, 0, sizeof(*tx_buffer));
 
                    // prompt user for G1
 
@@ -337,8 +342,8 @@ main(void)
               }else if (user_input_buffer[0] == 'R'){
 
                    UARTSendString(UART0_BASE, (uint8_t *)"Entering Readout Mode: \n", 24);
-                   // start Readout timer
-                   TimerEnable(TIMER1_BASE, TIMER_A);
+
+
 
                    next_state = Rx_mode;
 
@@ -360,7 +365,7 @@ main(void)
           {
               // turn on power supply and allow Antenna MCU to boot
               GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, GPIO_PIN_3);
-              SysCtlDelay(500000); // should be roughly 0.1 sec delay
+              SysCtlDelay(1000000); // should be roughly 0.1 sec delay
 
 
               // output return character that indicates start of message
@@ -371,7 +376,13 @@ main(void)
               for(i=0; i<19; i++){
                   //UARTSendString(UART0_BASE, (uint8_t *)tx_buffer, sizeof(*tx_buffer));
                   UARTCharPut(UART1_BASE, tx_buffer[i]);
+
               }
+
+              while(UARTCharsAvail(UART1_BASE)){
+                  UARTCharGet(UART1_BASE);
+              }
+
               UARTSendString(UART0_BASE, (uint8_t *)"Programming Message Sent\n", 25);
 
               // wait 0.5 seconds and turn off power enable
@@ -384,39 +395,68 @@ main(void)
           }
           case Rx_mode:
 
+              // clear buffers
+              memset(rx_buffer, 0, sizeof(*rx_buffer));
+
               // enable power supply for Antenna MCU and start timer
               GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, GPIO_PIN_3);
+              //TimerEnable(TIMER1_BASE, TIMER_A);
 
-              // wait for data to be sent by antenna MCU
-              // this should be a 0.5 second delay
-              //while(UARTCharsAvail(UART1_BASE) == false) {}
-              if(UARTCharsAvail(UART1_BASE)){
+              // receive code written by roberto
+              //uint8_t rx_buffer[38];
+              //uint8_t rx_index = 0;
+              rx_index = 0;
 
-              uint8_t c = UARTCharGet(UART1_BASE);
-              if(c == '\r'){
-                  valid_data = true;
-              }else if(c != '\n' && rx_index < PACKET_LENGTH){
-                  if(valid_data){
+              while(UARTCharGet(UART1_BASE) != '\r'){}
+
+              while(rx_index < 19){
+
+                  // Get char from UART1
+                  uint8_t c = UARTCharGet(UART1_BASE);
+
+                  // If char is not terminating character add it to buffer
+
+                  if(c != '\n' && c != '\r'){
                       rx_buffer[rx_index] = c;
                       rx_index++;
-                      next_state = Rx_mode;
                   }
-              }else{
-                  //message_received_flag = true;
-                  rx_buffer[rx_index] = '\0';
-                  rx_index = 0;
-                  GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, GPIO_PIN_2);
-
-                      // used for testing to output data message to PC
-//                      int i = 0;
-//                      for(i=0; i<30; i++){
-//                          UARTCharPut(UART0_BASE, rx_buffer[i]);
-//                      }
-                  valid_data = false;
-                  next_state = PC_report;
               }
+              next_state = PC_report;
 
-              }
+
+              // receive code written by travis
+//              memset(rx_buffer, 0, sizeof(*rx_buffer));
+//
+//              // wait for data to be sent by antenna MCU
+//              // this should be a 0.5 second delay
+//              //while(UARTCharsAvail(UART1_BASE) == false) {}
+//              if(UARTCharsAvail(UART1_BASE)){
+//
+//              uint8_t c = UARTCharGet(UART1_BASE);
+//              if(c == '\r'){
+//                  valid_data = true;
+//              }else if(c != '\n' && rx_index < PACKET_LENGTH){
+//                  if(valid_data){
+//                      rx_buffer[rx_index] = c;
+//                      rx_index++;
+//                      next_state = Rx_mode;
+//                  }
+//              }else{
+//                  //message_received_flag = true;
+//                  rx_buffer[rx_index] = '\0';
+//                  rx_index = 0;
+//                  GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, GPIO_PIN_2);
+//
+//                      // used for testing to output data message to PC
+////                      int i = 0;
+////                      for(i=0; i<30; i++){
+////                          UARTCharPut(UART0_BASE, rx_buffer[i]);
+////                      }
+//                  valid_data = false;
+//                  next_state = PC_report;
+//              }
+//
+//              }
           break;
           case PC_report:
           {
