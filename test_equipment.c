@@ -36,6 +36,11 @@ enum states
 enum states state = PC_initial;
 enum states next_state;
 
+// this variable is used to adjust for the UART incorrectly reading zeros at the start of a message
+// the data becomes valid after a \n char is sent, indicating the start of a message
+bool valid_data = false;
+bool rx_timer_flag = false;
+
 /////////////////////////////////////////////
 //          Timer handler functions
 /////////////////////////////////////////////
@@ -57,7 +62,8 @@ void readout_timer_handler() {
     UARTSendString(UART0_BASE, (uint8_t *) "No message received.\n", 21);
 
     GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, 0);
-    next_state = PC_initial;
+    rx_timer_flag = true;
+    //next_state = PC_initial;
 }
 
 /////////////////////////////////////////////
@@ -116,7 +122,7 @@ void init_comparator(){
     SysCtlPeripheralEnable(SYSCTL_PERIPH_COMP0);
     while(!SysCtlPeripheralReady(SYSCTL_PERIPH_COMP0)){}
 
-    ComparatorRefSet(COMP_BASE, COMP_REF_1_340625V);
+    ComparatorRefSet(COMP_BASE, COMP_REF_1_2375V);
     ComparatorConfigure(COMP_BASE, 0,(COMP_TRIG_NONE | COMP_ASRCP_REF | COMP_OUTPUT_INVERT));
 
     GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, GPIO_PIN_1);
@@ -227,9 +233,6 @@ uint8_t tx_buffer[40] = {0};
 uint8_t user_input_buffer[USER_INPUT_BUFFER_LENGTH] = {0};
 int rx_index = 0;
 
-// this variable is used to adjust for the UART incorrectly reading zeros at the start of a message
-// the data becomes valid after a \n char is sent, indicating the start of a message
-bool valid_data = false;
 
 int
 main(void)
@@ -379,9 +382,9 @@ main(void)
 
               }
 
-              while(UARTCharsAvail(UART1_BASE)){
-                  UARTCharGet(UART1_BASE);
-              }
+//              while(UARTCharsAvail(UART1_BASE)){
+//                  UARTCharGet(UART1_BASE);
+//              }
 
               UARTSendString(UART0_BASE, (uint8_t *)"Programming Message Sent\n", 25);
 
@@ -402,9 +405,28 @@ main(void)
               GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, GPIO_PIN_3);
               //TimerEnable(TIMER1_BASE, TIMER_A);
 
+
+              // new receive code using nonblocking char get
+
+              //while(UARTCharGet(UART1_BASE) != '\r'){}
+
+//              while(UARTCharsAvail(UART1_BASE) && rx_index < 19){
+//                  uint8_t c = UARTCharGetNonBlocking(UART1_BASE);
+//
+//                  // If char is not terminating character add it to buffer
+//                  if(c != '\n' && c != '\r'){
+//                      rx_buffer[rx_index] = c;
+//                      rx_index++;
+//                  }
+//              }
+//
+//              if(rx_timer_flag == true){
+//                  next_state = PC_initial;
+//              }else{
+//                  next_state = PC_report;
+//              }
+
               // receive code written by roberto
-              //uint8_t rx_buffer[38];
-              //uint8_t rx_index = 0;
               rx_index = 0;
 
               while(UARTCharGet(UART1_BASE) != '\r'){}
